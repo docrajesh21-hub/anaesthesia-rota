@@ -28,7 +28,7 @@ export default async function SessionsPage() {
         *,
         rota_assignments (
           id,
-          profile:profiles ( id, full_name, colour )
+          profile:profiles!rota_assignments_profile_id_fkey ( id, full_name, colour )
         )
       `)
       .order('date', { ascending: true })

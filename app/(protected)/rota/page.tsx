@@ -114,7 +114,7 @@ export default async function RotaPage({ searchParams }: PageProps) {
         id, date, title, status, type, start_time,
         rota_assignments (
           id,
-          profile:profiles ( id, full_name, colour )
+          profile:profiles!rota_assignments_profile_id_fkey ( id, full_name, colour )
         )
       `)
       .gte('date', startDate)
@@ -125,7 +125,7 @@ export default async function RotaPage({ searchParams }: PageProps) {
       .from('leave_requests')
       .select(`
         id, start_date, end_date, type,
-        profile:profiles ( id, full_name, colour )
+        profile:profiles!rota_assignments_profile_id_fkey ( id, full_name, colour )
       `)
       .lte('start_date', endDate)
       .gte('end_date', startDate)

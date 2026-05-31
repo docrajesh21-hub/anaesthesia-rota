@@ -47,7 +47,7 @@ export default async function LeavePage() {
     .from('leave_requests')
     .select(`
       id, start_date, end_date, type, status, notes,
-      profile:profiles ( id, full_name, colour )
+      profile:profiles!leave_requests_profile_id_fkey ( id, full_name, colour )
     `)
     .order('start_date', { ascending: false })
 
