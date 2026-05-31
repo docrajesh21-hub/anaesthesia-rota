@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,6 +24,7 @@ interface LeaveFormProps {
 }
 
 export default function LeaveForm({ onDone }: LeaveFormProps) {
+  const router = useRouter()
   const [form, setForm] = useState<LeaveFormData>({
     start_date: '',
     end_date: '',
@@ -46,6 +48,7 @@ export default function LeaveForm({ onDone }: LeaveFormProps) {
       setLoading(false)
       return
     }
+    router.refresh()
     onDone()
   }
 

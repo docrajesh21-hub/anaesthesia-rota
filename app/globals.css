@@ -54,6 +54,11 @@
 
   body {
     @apply bg-background text-foreground;
+    cursor: default;
+  }
+
+  a, button, [role="button"], label[for], [tabindex]:not([tabindex="-1"]) {
+    cursor: pointer;
   }
 }
 

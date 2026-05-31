@@ -1,10 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import TimePicker from '@/components/ui/time-picker'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -24,6 +26,7 @@ const SESSION_STATUSES: { value: SessionStatus; label: string }[] = [
 ]
 
 export default function SessionForm({ session, onDone }: SessionFormProps) {
+  const router = useRouter()
   const [form, setForm] = useState<SessionFormData>({
     date:       session?.date       ?? '',
     title:      session?.title      ?? '',
@@ -55,6 +58,7 @@ export default function SessionForm({ session, onDone }: SessionFormProps) {
       return
     }
 
+    router.refresh()
     onDone()
   }
 
@@ -68,9 +72,7 @@ export default function SessionForm({ session, onDone }: SessionFormProps) {
         <div className="space-y-1.5">
           <Label htmlFor="type">Type</Label>
           <Select value={form.type} onValueChange={v => set('type', v as SessionType)}>
-            <SelectTrigger id="type">
-              <SelectValue />
-            </SelectTrigger>
+            <SelectTrigger id="type"><SelectValue /></SelectTrigger>
             <SelectContent>
               {SESSION_TYPES.map(t => (
                 <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
@@ -94,9 +96,7 @@ export default function SessionForm({ session, onDone }: SessionFormProps) {
       <div className="space-y-1.5">
         <Label htmlFor="status">Status</Label>
         <Select value={form.status} onValueChange={v => set('status', v as SessionStatus)}>
-          <SelectTrigger id="status">
-            <SelectValue />
-          </SelectTrigger>
+          <SelectTrigger id="status"><SelectValue /></SelectTrigger>
           <SelectContent>
             {SESSION_STATUSES.map(s => (
               <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
@@ -107,12 +107,18 @@ export default function SessionForm({ session, onDone }: SessionFormProps) {
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
-          <Label htmlFor="start_time">Start time</Label>
-          <Input id="start_time" type="time" value={form.start_time ?? ''} onChange={e => set('start_time', e.target.value)} />
+          <Label>Start time</Label>
+          <TimePicker
+            value={form.start_time ?? ''}
+            onChange={v => set('start_time', v)}
+          />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="end_time">End time</Label>
-          <Input id="end_time" type="time" value={form.end_time ?? ''} onChange={e => set('end_time', e.target.value)} />
+          <Label>End time</Label>
+          <TimePicker
+            value={form.end_time ?? ''}
+            onChange={v => set('end_time', v)}
+          />
         </div>
       </div>
 
