@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { createClient } from '@/lib/supabase/server'
 import SessionsTable from '@/components/sessions/sessions-table'
 import type { Session, Profile } from '@/lib/types/database'

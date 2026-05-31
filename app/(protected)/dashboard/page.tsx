@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { createClient } from '@/lib/supabase/server'
 import { SESSION_STATUS_COLOUR, LEAVE_COLOUR } from '@/lib/types/database'
 

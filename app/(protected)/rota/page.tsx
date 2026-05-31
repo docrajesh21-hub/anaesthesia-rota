@@ -1,37 +1,111 @@
+export const dynamic = 'force-dynamic'
+
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
-import { getCalendarDays, parseYearMonth } from '@/lib/utils/calendar'
+import {
+  getCalendarDays, parseYearMonth, parseWeekParam, getWeekDays, toIso,
+} from '@/lib/utils/calendar'
 import { SESSION_STATUS_COLOUR, LEAVE_COLOUR } from '@/lib/types/database'
 import MonthNav from '@/components/rota/month-nav'
 import SessionChip from '@/components/rota/session-chip'
 import LeaveChip from '@/components/rota/leave-chip'
+import ViewToggle from '@/components/rota/view-toggle'
+import PartnerGrid from '@/components/rota/partner-grid'
 import type { SessionStatus, LeaveType } from '@/lib/types/database'
 
-type PartnerRef = { id: string; full_name: string; colour: string } | null
-type AssignmentRow = { id: string; profile: PartnerRef | PartnerRef[] }
-type LeaveRow = {
-  id: string; start_date: string; end_date: string; type: string
-  profile: PartnerRef | PartnerRef[]
+const DAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+interface PageProps {
+  searchParams: { month?: string; week?: string; view?: string }
 }
+
+type PartnerRef = { id: string; full_name: string; colour: string } | null
 
 function resolveProfile(p: PartnerRef | PartnerRef[] | null | undefined): PartnerRef {
   if (!p) return null
   return Array.isArray(p) ? (p[0] ?? null) : p
 }
 
-const DAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-
-interface PageProps {
-  searchParams: { month?: string }
-}
-
 export default async function RotaPage({ searchParams }: PageProps) {
-  const { year, month } = parseYearMonth(searchParams.month)
+  const view = searchParams.view ?? 'partners'
+  const supabase = await createClient()
 
+  // ── Partners view ─────────────────────────────────────────────────────────
+  if (view === 'partners') {
+    const monday = parseWeekParam(searchParams.week)
+    const weekDays = getWeekDays(monday)
+    const startDate = weekDays[0]
+    const endDate = weekDays[6]
+
+    const [{ data: profiles }, { data: rawSessions }, { data: rawLeaves }] = await Promise.all([
+      supabase.from('profiles').select('id, full_name, colour').order('full_name'),
+
+      supabase
+        .from('sessions')
+        .select(`
+          id, date, title, status, start_time,
+          rota_assignments ( profile_id )
+        `)
+        .gte('date', startDate)
+        .lte('date', endDate),
+
+      supabase
+        .from('leave_requests')
+        .select('id, profile_id, start_date, end_date, type')
+        .lte('start_date', endDate)
+        .gte('end_date', startDate)
+        .eq('status', 'approved'),
+    ])
+
+    // Build partner rows
+    const partners = (profiles ?? []).map(p => {
+      const sessions: Record<string, { id: string; title: string; status: SessionStatus; start_time: string | null }[]> = {}
+      const leaves: Record<string, { id: string; type: string }[]> = {}
+
+      // Attach sessions where this partner is assigned
+      for (const s of rawSessions ?? []) {
+        const assigned = (s.rota_assignments as { profile_id: string }[] ?? [])
+          .some(a => a.profile_id === p.id)
+        if (!assigned) continue
+        const list = sessions[s.date] ?? []
+        list.push({ id: s.id, title: s.title, status: s.status as SessionStatus, start_time: s.start_time })
+        sessions[s.date] = list
+      }
+
+      // Expand leave across days
+      for (const l of rawLeaves ?? []) {
+        if (l.profile_id !== p.id) continue
+        const from = new Date(l.start_date + 'T00:00:00')
+        const to = new Date(l.end_date + 'T00:00:00')
+        for (const d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+          const iso = toIso(d)
+          if (!weekDays.includes(iso)) continue
+          const list = leaves[iso] ?? []
+          list.push({ id: l.id, type: l.type })
+          leaves[iso] = list
+        }
+      }
+
+      return { ...p, sessions, leaves }
+    })
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-gray-900">Rota</h1>
+          <Suspense><ViewToggle /></Suspense>
+        </div>
+        <ColourLegend />
+        <PartnerGrid monday={toIso(monday)} partners={partners} weekDays={weekDays} />
+      </div>
+    )
+  }
+
+  // ── Monthly calendar view ──────────────────────────────────────────────────
+  const { year, month } = parseYearMonth(searchParams.month)
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`
   const lastDay = new Date(year, month, 0).getDate()
   const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`
-
-  const supabase = await createClient()
 
   const [{ data: sessions }, { data: leaves }] = await Promise.all([
     supabase
@@ -58,7 +132,6 @@ export default async function RotaPage({ searchParams }: PageProps) {
       .eq('status', 'approved'),
   ])
 
-  // Index sessions and leave by ISO date for O(1) lookup
   const sessionsByDate = new Map<string, typeof sessions>()
   for (const s of sessions ?? []) {
     const list = sessionsByDate.get(s.date) ?? []
@@ -68,9 +141,9 @@ export default async function RotaPage({ searchParams }: PageProps) {
 
   const leaveByDate = new Map<string, typeof leaves>()
   for (const l of leaves ?? []) {
-    const start = new Date(l.start_date)
-    const end = new Date(l.end_date)
-    for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const from = new Date(l.start_date)
+    const to = new Date(l.end_date)
+    for (const d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
       const iso = d.toISOString().slice(0, 10)
       const list = leaveByDate.get(iso) ?? []
       list.push(l)
@@ -84,40 +157,22 @@ export default async function RotaPage({ searchParams }: PageProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Rota</h1>
-        <MonthNav year={year} month={month} />
+        <div className="flex items-center gap-3">
+          <Suspense><ViewToggle /></Suspense>
+          <MonthNav year={year} month={month} />
+        </div>
       </div>
+      <ColourLegend />
 
-      {/* Colour legend */}
-      <div className="flex flex-wrap gap-3 text-xs">
-        {(Object.entries(SESSION_STATUS_COLOUR) as [SessionStatus, string][]).map(([status, colour]) => (
-          <span key={status} className="flex items-center gap-1.5">
-            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colour }} />
-            <span className="capitalize text-gray-600">{status}</span>
-          </span>
-        ))}
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: LEAVE_COLOUR }} />
-          <span className="text-gray-600">Leave</span>
-        </span>
-      </div>
-
-      {/* Calendar grid */}
       <div className="bg-white rounded-lg border overflow-hidden">
-        {/* Day headers */}
         <div className="grid grid-cols-7 border-b">
           {DAY_HEADERS.map(d => (
-            <div key={d} className="py-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              {d}
-            </div>
+            <div key={d} className="py-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">{d}</div>
           ))}
         </div>
-
-        {/* Weeks */}
         <div className="grid grid-cols-7 divide-x divide-y">
           {days.map(day => {
             const daySessions = sessionsByDate.get(day.iso) ?? []
-            const dayLeaves = leaveByDate.get(day.iso) ?? []
-
             return (
               <div
                 key={day.iso}
@@ -133,34 +188,50 @@ export default async function RotaPage({ searchParams }: PageProps) {
                 ].join(' ')}>
                   {day.date.getDate()}
                 </p>
-
                 {daySessions.map(s => (
                   <SessionChip
                     key={s.id}
                     title={s.title}
                     status={s.status as SessionStatus}
-                    partners={(s.rota_assignments as AssignmentRow[] ?? []).flatMap(a => {
+                    partners={(s.rota_assignments as { profile: PartnerRef | PartnerRef[] | null }[] ?? []).flatMap(a => {
                       const p = resolveProfile(a.profile)
-                      return p?.full_name ? [{ full_name: p.full_name, colour: p.colour }] : []
+                      return p?.full_name ? [{ full_name: p.full_name, colour: p.colour ?? '' }] : []
                     })}
                   />
                 ))}
-
-                {(dayLeaves as LeaveRow[]).map(l => {
-                  const p = resolveProfile(l.profile)
-                  return (
-                    <LeaveChip
-                      key={l.id + day.iso}
-                      fullName={p?.full_name ?? ''}
-                      type={l.type as LeaveType}
-                    />
-                  )
-                })}
+                {(leaves ?? [])
+                  .filter(l => {
+                    const iso = day.iso
+                    return iso >= l.start_date && iso <= l.end_date
+                  })
+                  .map(l => {
+                    const p = resolveProfile((l as { profile: PartnerRef | PartnerRef[] | null }).profile)
+                    return (
+                      <LeaveChip key={l.id + day.iso} fullName={p?.full_name ?? ''} type={l.type as LeaveType} />
+                    )
+                  })}
               </div>
             )
           })}
         </div>
       </div>
+    </div>
+  )
+}
+
+function ColourLegend() {
+  return (
+    <div className="flex flex-wrap gap-3 text-xs">
+      {(Object.entries(SESSION_STATUS_COLOUR) as [SessionStatus, string][]).map(([status, colour]) => (
+        <span key={status} className="flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colour }} />
+          <span className="capitalize text-gray-600">{status}</span>
+        </span>
+      ))}
+      <span className="flex items-center gap-1.5">
+        <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: LEAVE_COLOUR }} />
+        <span className="text-gray-600">Leave</span>
+      </span>
     </div>
   )
 }

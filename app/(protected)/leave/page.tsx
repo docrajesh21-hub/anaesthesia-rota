@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { createClient } from '@/lib/supabase/server'
 import LeaveTable from '@/components/leave/leave-table'
 import type { LeaveStatus, LeaveType } from '@/lib/types/database'

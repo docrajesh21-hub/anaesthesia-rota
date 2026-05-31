@@ -68,3 +68,47 @@ export const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
+
+export const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+/** Returns the ISO date of the Monday of the week containing the given date */
+export function getMondayOf(date: Date): Date {
+  const d = new Date(date)
+  const dow = (d.getDay() + 6) % 7  // Mon=0 … Sun=6
+  d.setDate(d.getDate() - dow)
+  return d
+}
+
+/** Returns 7 ISO date strings for Mon–Sun of the week starting at monday */
+export function getWeekDays(monday: Date): string[] {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday)
+    d.setDate(d.getDate() + i)
+    return toIso(d)
+  })
+}
+
+export function parseWeekParam(value: string | undefined): Date {
+  if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const d = new Date(value + 'T00:00:00')
+    if (!isNaN(d.getTime())) return getMondayOf(d)
+  }
+  return getMondayOf(new Date())
+}
+
+export function prevWeek(monday: Date): string {
+  const d = new Date(monday)
+  d.setDate(d.getDate() - 7)
+  return toIso(d)
+}
+
+export function nextWeek(monday: Date): string {
+  const d = new Date(monday)
+  d.setDate(d.getDate() + 7)
+  return toIso(d)
+}
+
+export function formatWeekHeader(iso: string): string {
+  const d = new Date(iso + 'T00:00:00')
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
