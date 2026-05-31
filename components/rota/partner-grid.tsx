@@ -7,6 +7,7 @@ import { SESSION_STATUS_COLOUR, LEAVE_COLOUR } from '@/lib/types/database'
 import { DAY_SHORT, formatWeekHeader, prevWeek, nextWeek, toIso } from '@/lib/utils/calendar'
 import { Button } from '@/components/ui/button'
 import { assignFromRota } from '@/app/actions/rota'
+import SessionDetailDialog from '@/components/rota/session-detail-dialog'
 import type { SessionStatus } from '@/lib/types/database'
 
 interface SessionCell {
@@ -55,6 +56,7 @@ export default function PartnerGrid({
   const [dropTarget, setDropTarget] = useState<{ profileId: string; date: string } | null>(null)
   const [assigning, setAssigning] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [detailSessionId, setDetailSessionId] = useState<string | null>(null)
 
   const totalUnassigned = weekDays.reduce((n, d) => n + (unassignedByDate[d]?.length ?? 0), 0)
 
@@ -174,6 +176,7 @@ export default function PartnerGrid({
                             draggable
                             onDragStart={e => onDragStart(e, { ...s, date: iso })}
                             onDragEnd={onDragEnd}
+                            onDoubleClick={() => setDetailSessionId(s.id)}
                             className={cn(
                               'rounded px-1.5 py-0.5 text-xs text-white mb-0.5 truncate',
                               'cursor-grab active:cursor-grabbing select-none',
@@ -182,7 +185,7 @@ export default function PartnerGrid({
                               draggedSession?.id === s.id && 'opacity-50 scale-95',
                             )}
                             style={{ backgroundColor: SESSION_STATUS_COLOUR[s.status] }}
-                            title={`${s.title} — drag to assign`}
+                            title={`${s.title} — drag to assign · double-click for details`}
                           >
                             <span className="mr-1">⠿</span>
                             {s.title}
@@ -255,9 +258,10 @@ export default function PartnerGrid({
                           {daySessions.map(s => (
                             <div
                               key={s.id}
-                              className="rounded px-1.5 py-0.5 text-xs text-white mb-0.5 truncate"
+                              onDoubleClick={() => setDetailSessionId(s.id)}
+                              className="rounded px-1.5 py-0.5 text-xs text-white mb-0.5 truncate cursor-pointer"
                               style={{ backgroundColor: SESSION_STATUS_COLOUR[s.status] }}
-                              title={`${s.title}${s.start_time ? ` · ${s.start_time.slice(0, 5)}` : ''}`}
+                              title={`${s.title}${s.start_time ? ` · ${s.start_time.slice(0, 5)}` : ''} — double-click for details`}
                             >
                               {s.title}
                               {s.start_time && <span className="ml-1 opacity-75">{s.start_time.slice(0, 5)}</span>}
@@ -279,6 +283,11 @@ export default function PartnerGrid({
           </table>
         </div>
       )}
+
+      <SessionDetailDialog
+        sessionId={detailSessionId}
+        onClose={() => setDetailSessionId(null)}
+      />
     </div>
   )
 }

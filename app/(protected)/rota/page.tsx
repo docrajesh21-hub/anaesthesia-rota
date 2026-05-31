@@ -7,13 +7,10 @@ import {
 } from '@/lib/utils/calendar'
 import { SESSION_STATUS_COLOUR, LEAVE_COLOUR } from '@/lib/types/database'
 import MonthNav from '@/components/rota/month-nav'
-import SessionChip from '@/components/rota/session-chip'
-import LeaveChip from '@/components/rota/leave-chip'
 import ViewToggle from '@/components/rota/view-toggle'
 import PartnerGrid from '@/components/rota/partner-grid'
+import CalendarGrid from '@/components/rota/calendar-grid'
 import type { SessionStatus, LeaveType } from '@/lib/types/database'
-
-const DAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 interface PageProps {
   searchParams: { month?: string; week?: string; view?: string }
@@ -154,6 +151,9 @@ export default async function RotaPage({ searchParams }: PageProps) {
       .eq('status', 'approved'),
   ])
 
+  const calDays = getCalendarDays(year, month)
+
+  // Build CalendarGrid-shaped data
   const sessionsByDate = new Map<string, typeof sessions>()
   for (const s of sessions ?? []) {
     const list = sessionsByDate.get(s.date) ?? []
@@ -161,19 +161,34 @@ export default async function RotaPage({ searchParams }: PageProps) {
     sessionsByDate.set(s.date, list)
   }
 
-  const leaveByDate = new Map<string, typeof leaves>()
-  for (const l of leaves ?? []) {
-    const from = new Date(l.start_date)
-    const to = new Date(l.end_date)
-    for (const d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
-      const iso = d.toISOString().slice(0, 10)
-      const list = leaveByDate.get(iso) ?? []
-      list.push(l)
-      leaveByDate.set(iso, list)
-    }
-  }
+  const gridDays = calDays.map(day => {
+    const daySessions = (sessionsByDate.get(day.iso) ?? []).map(s => ({
+      id: s.id,
+      title: s.title,
+      status: s.status as SessionStatus,
+      start_time: s.start_time,
+      partners: (s.rota_assignments as { profile: PartnerRef | PartnerRef[] | null }[] ?? []).flatMap(a => {
+        const p = resolveProfile(a.profile)
+        return p?.full_name ? [{ full_name: p.full_name, colour: p.colour ?? '' }] : []
+      }),
+    }))
 
-  const days = getCalendarDays(year, month)
+    const dayLeaves = (leaves ?? [])
+      .filter(l => day.iso >= l.start_date && day.iso <= l.end_date)
+      .map(l => {
+        const p = resolveProfile((l as { profile: PartnerRef | PartnerRef[] | null }).profile)
+        return { id: l.id, full_name: p?.full_name ?? '', type: l.type as LeaveType }
+      })
+
+    return {
+      iso: day.iso,
+      dayNum: day.date.getDate(),
+      isCurrentMonth: day.isCurrentMonth,
+      isToday: day.isToday,
+      sessions: daySessions,
+      leaves: dayLeaves,
+    }
+  })
 
   return (
     <div className="space-y-4">
@@ -185,58 +200,7 @@ export default async function RotaPage({ searchParams }: PageProps) {
         </div>
       </div>
       <ColourLegend />
-
-      <div className="bg-white rounded-lg border overflow-hidden">
-        <div className="grid grid-cols-7 border-b">
-          {DAY_HEADERS.map(d => (
-            <div key={d} className="py-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">{d}</div>
-          ))}
-        </div>
-        <div className="grid grid-cols-7 divide-x divide-y">
-          {days.map(day => {
-            const daySessions = sessionsByDate.get(day.iso) ?? []
-            return (
-              <div
-                key={day.iso}
-                className={[
-                  'min-h-[100px] p-1.5',
-                  day.isCurrentMonth ? 'bg-white' : 'bg-gray-50',
-                  day.isToday ? 'ring-2 ring-inset ring-blue-400' : '',
-                ].join(' ')}
-              >
-                <p className={[
-                  'text-xs font-medium mb-1 text-right',
-                  day.isToday ? 'text-blue-600' : day.isCurrentMonth ? 'text-gray-700' : 'text-gray-400',
-                ].join(' ')}>
-                  {day.date.getDate()}
-                </p>
-                {daySessions.map(s => (
-                  <SessionChip
-                    key={s.id}
-                    title={s.title}
-                    status={s.status as SessionStatus}
-                    partners={(s.rota_assignments as { profile: PartnerRef | PartnerRef[] | null }[] ?? []).flatMap(a => {
-                      const p = resolveProfile(a.profile)
-                      return p?.full_name ? [{ full_name: p.full_name, colour: p.colour ?? '' }] : []
-                    })}
-                  />
-                ))}
-                {(leaves ?? [])
-                  .filter(l => {
-                    const iso = day.iso
-                    return iso >= l.start_date && iso <= l.end_date
-                  })
-                  .map(l => {
-                    const p = resolveProfile((l as { profile: PartnerRef | PartnerRef[] | null }).profile)
-                    return (
-                      <LeaveChip key={l.id + day.iso} fullName={p?.full_name ?? ''} type={l.type as LeaveType} />
-                    )
-                  })}
-              </div>
-            )
-          })}
-        </div>
-      </div>
+      <CalendarGrid days={gridDays} />
     </div>
   )
 }
@@ -244,9 +208,9 @@ export default async function RotaPage({ searchParams }: PageProps) {
 function ColourLegend() {
   return (
     <div className="flex flex-wrap gap-3 text-xs">
-      {(Object.entries(SESSION_STATUS_COLOUR) as [SessionStatus, string][]).map(([status, colour]) => (
+      {(Object.entries(SESSION_STATUS_COLOUR) as [SessionStatus, string][]).map(([status, hex]) => (
         <span key={status} className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colour }} />
+          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: hex }} />
           <span className="capitalize text-gray-600">{status}</span>
         </span>
       ))}
