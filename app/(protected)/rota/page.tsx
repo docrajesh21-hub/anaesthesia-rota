@@ -57,22 +57,27 @@ export default async function RotaPage({ searchParams }: PageProps) {
         .eq('status', 'approved'),
     ])
 
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data: currentProfile } = await supabase
+      .from('profiles').select('role').eq('id', user!.id).single()
+
+    type SessionCell = { id: string; title: string; status: SessionStatus; start_time: string | null; date: string }
+    const unassignedByDate: Record<string, SessionCell[]> = {}
+
     // Build partner rows
     const partners = (profiles ?? []).map(p => {
-      const sessions: Record<string, { id: string; title: string; status: SessionStatus; start_time: string | null }[]> = {}
+      const sessions: Record<string, SessionCell[]> = {}
       const leaves: Record<string, { id: string; type: string }[]> = {}
 
-      // Attach sessions where this partner is assigned
       for (const s of rawSessions ?? []) {
-        const assigned = (s.rota_assignments as { profile_id: string }[] ?? [])
-          .some(a => a.profile_id === p.id)
-        if (!assigned) continue
-        const list = sessions[s.date] ?? []
-        list.push({ id: s.id, title: s.title, status: s.status as SessionStatus, start_time: s.start_time })
-        sessions[s.date] = list
+        const assignments = s.rota_assignments as { profile_id: string }[] ?? []
+        if (assignments.some(a => a.profile_id === p.id)) {
+          const list = sessions[s.date] ?? []
+          list.push({ id: s.id, title: s.title, status: s.status as SessionStatus, start_time: s.start_time, date: s.date })
+          sessions[s.date] = list
+        }
       }
 
-      // Expand leave across days
       for (const l of rawLeaves ?? []) {
         if (l.profile_id !== p.id) continue
         const from = new Date(l.start_date + 'T00:00:00')
@@ -89,6 +94,16 @@ export default async function RotaPage({ searchParams }: PageProps) {
       return { ...p, sessions, leaves }
     })
 
+    // Unassigned: sessions with zero assignments this week
+    for (const s of rawSessions ?? []) {
+      const assignments = s.rota_assignments as { profile_id: string }[] ?? []
+      if (assignments.length === 0) {
+        const list = unassignedByDate[s.date] ?? []
+        list.push({ id: s.id, title: s.title, status: s.status as SessionStatus, start_time: s.start_time, date: s.date })
+        unassignedByDate[s.date] = list
+      }
+    }
+
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -96,7 +111,14 @@ export default async function RotaPage({ searchParams }: PageProps) {
           <Suspense><ViewToggle /></Suspense>
         </div>
         <ColourLegend />
-        <PartnerGrid monday={toIso(monday)} partners={partners} weekDays={weekDays} />
+        <PartnerGrid
+          monday={toIso(monday)}
+          partners={partners}
+          weekDays={weekDays}
+          unassignedByDate={unassignedByDate}
+          currentUserId={user!.id}
+          currentUserRole={currentProfile?.role ?? 'partner'}
+        />
       </div>
     )
   }
@@ -125,7 +147,7 @@ export default async function RotaPage({ searchParams }: PageProps) {
       .from('leave_requests')
       .select(`
         id, start_date, end_date, type,
-        profile:profiles!rota_assignments_profile_id_fkey ( id, full_name, colour )
+        profile:profiles!leave_requests_profile_id_fkey ( id, full_name, colour )
       `)
       .lte('start_date', endDate)
       .gte('end_date', startDate)

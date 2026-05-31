@@ -8,22 +8,24 @@ import { Separator } from '@/components/ui/separator'
 import type { UserRole } from '@/lib/types/database'
 
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/rota',      label: 'Rota' },
-  { href: '/sessions',  label: 'Sessions' },
-  { href: '/leave',     label: 'Leave' },
+  { href: '/dashboard',      label: 'Dashboard' },
+  { href: '/rota',           label: 'Rota' },
+  { href: '/sessions',       label: 'Sessions' },
+  { href: '/leave',          label: 'Leave' },
+  { href: '/notifications',  label: 'Notifications' },
 ]
 
 const adminItems = [
-  { href: '/partners',  label: 'Partners' },
+  { href: '/partners', label: 'Partners' },
 ]
 
 interface SidebarProps {
   fullName: string
   role: UserRole | string
+  unreadCount: number
 }
 
-export default function Sidebar({ fullName, role }: SidebarProps) {
+export default function Sidebar({ fullName, role, unreadCount }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
@@ -45,20 +47,27 @@ export default function Sidebar({ fullName, role }: SidebarProps) {
       <Separator />
 
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {items.map(item => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              'flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors',
-              pathname === item.href || pathname.startsWith(item.href + '/')
-                ? 'bg-gray-100 text-gray-900'
-                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-            )}
-          >
-            {item.label}
-          </Link>
-        ))}
+        {items.map(item => {
+          const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+          const isNotif = item.href === '/notifications'
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                'flex items-center justify-between px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                isActive ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+              )}
+            >
+              <span>{item.label}</span>
+              {isNotif && unreadCount > 0 && (
+                <span className="ml-2 rounded-full bg-blue-500 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </Link>
+          )
+        })}
       </nav>
 
       <Separator />
